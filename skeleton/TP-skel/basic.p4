@@ -3,6 +3,7 @@
 #include <v1model.p4>
 
 const bit<16> TYPE_IPV4 = 0x800;
+const bit<16> TYPE_TELEMETRY = 0x801;
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -33,6 +34,11 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
+header telemetry_t {
+    bit is_valid;
+    bit<7> padding;
+}
+
 struct metadata {
     /* empty */
 }
@@ -40,6 +46,7 @@ struct metadata {
 struct headers {
     ethernet_t   ethernet;
     ipv4_t       ipv4;
+    telemetry_t  telemetry;
 }
 
 /*************************************************************************
@@ -48,6 +55,7 @@ struct headers {
 
 parser MyParser(packet_in packet,
                 out headers hdr,
+                // TODO: What is this metadata? I don't remember it
                 inout metadata meta,
                 inout standard_metadata_t standard_metadata) {
 
@@ -58,7 +66,8 @@ parser MyParser(packet_in packet,
     state parse_ethernet {
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
-            TYPE_IPV4: parse_ipv4;
+            TYPE_IPV4: mark_no_telemetry;
+            TYPE_TELEMETRY: parse_telemetry;
             default: accept;
         }
     }
@@ -68,6 +77,15 @@ parser MyParser(packet_in packet,
         transition accept;
     }
 
+    state mark_no_telemetry {
+        hdr.telemetry.is_valid = 0;
+        transition parse_ipv4;
+    }
+
+    state parse_telemetry {
+        packet.extract(hdr.telemetry);
+        transition parse_ipv4;
+    }
 }
 
 /*************************************************************************
@@ -167,10 +185,10 @@ control MyDeparser(packet_out packet, in headers hdr) {
 *************************************************************************/
 
 V1Switch(
-MyParser(),
-MyVerifyChecksum(),
-MyIngress(),
-MyEgress(),
-MyComputeChecksum(),
-MyDeparser()
+    MyParser(),
+    MyVerifyChecksum(),
+    MyIngress(),
+    MyEgress(),
+    MyComputeChecksum(),
+    MyDeparser()
 ) main;
