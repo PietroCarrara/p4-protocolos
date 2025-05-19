@@ -35,8 +35,7 @@ header ipv4_t {
 }
 
 header telemetry_t {
-    bit is_valid;
-    bit<7> padding;
+    bit<8> foo;
 }
 
 struct metadata {
@@ -78,7 +77,7 @@ parser MyParser(packet_in packet,
     }
 
     state mark_no_telemetry {
-        hdr.telemetry.is_valid = 0;
+        hdr.telemetry.setInvalid();
         transition parse_ipv4;
     }
 
@@ -113,6 +112,17 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = dstAddr;
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
+
+        // Telemetry logic
+        if (hdr.telemetry.isValid()) {
+            hdr.telemetry.foo = hdr.telemetry.foo + 1;
+        } else {
+            hdr.telemetry = {
+                1,
+            };
+            hdr.ethernet.etherType = TYPE_TELEMETRY;
+            hdr.telemetry.setValid();
+        }
     }
 
     table ipv4_lpm {
@@ -176,6 +186,7 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
+        packet.emit(hdr.telemetry);
         packet.emit(hdr.ipv4);
     }
 }
