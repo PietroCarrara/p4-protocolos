@@ -2,19 +2,21 @@
 import os
 import sys
 
+TELEMETRY_ETHER_TYPE = 0x801
+TELEMETRY_HEADER_SIZE_BYTES = 1
+
 from scapy.all import (
-    Ether,
-    Raw,
     FieldLenField,
     FieldListField,
     IntField,
-    IPOption,
     ShortField,
     get_if_list,
     sniff,
 )
-from scapy.layers.inet import _IPOption_HDR
-from scapy.packet import Packet
+from scapy.layers.inet import _IPOption_HDR, IP, IPOption
+from scapy.layers.l2 import Ether
+from scapy.packet import Packet, Raw
+from binascii import hexlify
 
 
 def get_if():
@@ -42,11 +44,15 @@ class IPOption_MRI(IPOption):
                                    IntField("", 0),
                                    length_from=lambda pkt:pkt.count*4) ]
 def handle_pkt(pkt: Packet):
-    if Ether in pkt and pkt[Ether].type == 0x801:
-        print("it's got telemetry!")
-        pkt[Raw].show2()
+    if Ether in pkt and pkt[Ether].type == TELEMETRY_ETHER_TYPE:
+        telemetry_header = pkt[Raw].load[0:TELEMETRY_HEADER_SIZE_BYTES]
+        rest_of_packet = pkt[Raw].load[TELEMETRY_HEADER_SIZE_BYTES:]
+        ip_packet = IP(rest_of_packet)
 
-    print()
+        print(f'Telemetry raw data: {repr(hexlify(telemetry_header, '-'))}')
+        ip_packet.show2()
+        print()
+
 
 
 def main():
