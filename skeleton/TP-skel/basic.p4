@@ -1,6 +1,6 @@
 /* -*- P4_16 -*- */
 #include <core.p4>
-#include <v1model.p4>
+#include <v1model.p4> // Source: https://github.com/p4lang/p4c/blob/main/p4include/v1model.p4
 
 const bit<16> TYPE_IPV4 = 0x800;
 const bit<16> TYPE_TELEMETRY = 0x801;
@@ -34,8 +34,21 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
-header telemetry_t {
-    bit<8> foo;
+const int SIZEOF_TELEMETRY_ITEM = 48 + 9 + 9 + 6; // How come there is no sizeof?
+header telemetry_item {
+    bit<48> ingress_global_timestamp; // As defined in v1model.p4
+    bit<9> ingress_port;              // As defined in v1model.p4
+    bit<9> egress_port;               // As defined in v1model.p4
+    // TODO: switch_id
+    bit<6> padding;
+}
+
+header telemetry_header_t {
+    bit<8> item_count; // Number of telemetry items in the telemetry list (each one corresponds to a router hop)
+}
+
+header telemetry_payload_t {
+    varbit<(255*SIZEOF_TELEMETRY_ITEM)> items;
 }
 
 struct metadata {
@@ -45,7 +58,8 @@ struct metadata {
 struct headers {
     ethernet_t   ethernet;
     ipv4_t       ipv4;
-    telemetry_t  telemetry;
+    telemetry_header_t telemetry_header;
+    telemetry_payload_t  telemetry_payload;
 }
 
 /*************************************************************************
@@ -77,12 +91,14 @@ parser MyParser(packet_in packet,
     }
 
     state mark_no_telemetry {
-        hdr.telemetry.setInvalid();
+        hdr.telemetry_header.setInvalid();
+        hdr.telemetry_payload.setInvalid();
         transition parse_ipv4;
     }
 
     state parse_telemetry {
-        packet.extract(hdr.telemetry);
+        packet.extract(hdr.telemetry_header);
+        packet.extract(hdr.telemetry_payload, (bit<32>)(hdr.telemetry_header.item_count * SIZEOF_TELEMETRY_ITEM));
         transition parse_ipv4;
     }
 }
@@ -114,14 +130,13 @@ control MyIngress(inout headers hdr,
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
 
         // Telemetry logic
-        if (hdr.telemetry.isValid()) {
-            hdr.telemetry.foo = hdr.telemetry.foo + 1;
+        if (hdr.telemetry_header.isValid() && hdr.telemetry_payload.isValid()) {
+            // TODO: Update metrics
         } else {
-            hdr.telemetry = {
-                1,
-            };
+            // TODO: Set telemetry headers. Read them from https://github.com/p4lang/behavioral-model/blob/main/docs/simple_switch.md#intrinsic_metadata-header
             hdr.ethernet.etherType = TYPE_TELEMETRY;
-            hdr.telemetry.setValid();
+            hdr.telemetry_header.setValid();
+            hdr.telemetry_payload.setValid();
         }
     }
 
@@ -186,7 +201,8 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
-        packet.emit(hdr.telemetry);
+        packet.emit(hdr.telemetry_header);
+        packet.emit(hdr.telemetry_payload);
         packet.emit(hdr.ipv4);
     }
 }
