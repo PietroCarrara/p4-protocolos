@@ -1,6 +1,6 @@
 /* -*- P4_16 -*- */
 #include <core.p4>
-#include <v1model.p4>
+#include <v1model.p4> // Source: https://github.com/p4lang/p4c/blob/main/p4include/v1model.p4
 
 const bit<16> TYPE_IPV4 = 0x800;
 const bit<16> TYPE_TELEMETRY = 0x801;
@@ -34,8 +34,16 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
+typedef struct telemetry_item {
+    bit<48> ingress_global_timestamp; // As defined in v1model.p4
+    bit<9> ingress_port;              // As defined in v1model.p4
+    bit<9> egress_port;               // As defined in v1model.p4
+    // TODO: switch_id
+} telemetry_item;
+
 header telemetry_t {
-    bit<8> foo;
+    bit<8> item_count; // Number of telemetry items in the telemetry list (each one corresponds to a router hop)
+    varbit<255 * sizeofInBits(telemetry_item)> items;
 }
 
 struct metadata {
@@ -82,7 +90,8 @@ parser MyParser(packet_in packet,
     }
 
     state parse_telemetry {
-        packet.extract(hdr.telemetry);
+        packet.extract(hdr.telemetry.item_count);
+        packet.extract(hdr.telemetry.items, hdr.telemetry.item_count * sizeofInBits(telemetry_item));
         transition parse_ipv4;
     }
 }
@@ -116,10 +125,9 @@ control MyIngress(inout headers hdr,
         // Telemetry logic
         if (hdr.telemetry.isValid()) {
             hdr.telemetry.foo = hdr.telemetry.foo + 1;
+            hdr.telemetry.ingress_global_timestamp = intrinsic_metadata.ingress_global_timestamp;
         } else {
-            hdr.telemetry = {
-                1,
-            };
+            // TODO: Set telemetry headers. Read them from https://github.com/p4lang/behavioral-model/blob/main/docs/simple_switch.md#intrinsic_metadata-header
             hdr.ethernet.etherType = TYPE_TELEMETRY;
             hdr.telemetry.setValid();
         }
