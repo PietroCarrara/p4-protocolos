@@ -3,7 +3,7 @@ import os
 import sys
 
 TELEMETRY_ETHER_TYPE = 0x801
-TELEMETRY_HEADER_SIZE_BYTES = 1
+SIZEOF_TELEMETRY_ITEM = 48 + 9 + 9 + 6
 
 from scapy.all import (
     FieldLenField,
@@ -45,11 +45,14 @@ class IPOption_MRI(IPOption):
                                    length_from=lambda pkt:pkt.count*4) ]
 def handle_pkt(pkt: Packet):
     if Ether in pkt and pkt[Ether].type == TELEMETRY_ETHER_TYPE:
-        telemetry_header = pkt[Raw].load[0:TELEMETRY_HEADER_SIZE_BYTES]
-        rest_of_packet = pkt[Raw].load[TELEMETRY_HEADER_SIZE_BYTES:]
+        telemetry_item_count = pkt[Raw].load[0]
+        telemetry_items = pkt[Raw].load[1:1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM]
+        # TODO: Parse!
+
+        rest_of_packet = pkt[Raw].load[1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM:]
         ip_packet = IP(rest_of_packet)
 
-        print(f'Telemetry raw data: {repr(hexlify(telemetry_header, '-'))}')
+        print(f'Telemetry raw data: {repr(hexlify(telemetry_items, '-'))}')
         ip_packet.show2()
         print()
 
