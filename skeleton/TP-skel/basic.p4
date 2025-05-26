@@ -34,6 +34,7 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
+const int MAX_HOPS = 255;
 const int SIZEOF_TELEMETRY_ITEM = 48 + 9 + 9 + 6; // How come there is no sizeof?
 header telemetry_item {
     bit<48> ingress_global_timestamp; // As defined in v1model.p4
@@ -47,19 +48,15 @@ header telemetry_header_t {
     bit<8> item_count; // Number of telemetry items in the telemetry list (each one corresponds to a router hop)
 }
 
-header telemetry_payload_t {
-    varbit<(255*SIZEOF_TELEMETRY_ITEM)> items;
-}
-
 struct metadata {
-    /* empty */
+    bit<8> parsed_telemetry_item_count;
 }
 
 struct headers {
     ethernet_t   ethernet;
-    ipv4_t       ipv4;
     telemetry_header_t telemetry_header;
-    telemetry_payload_t  telemetry_payload;
+    telemetry_item[MAX_HOPS] telemetry_items;
+    ipv4_t       ipv4;
 }
 
 /*************************************************************************
@@ -68,7 +65,6 @@ struct headers {
 
 parser MyParser(packet_in packet,
                 out headers hdr,
-                // TODO: What is this metadata? I don't remember it
                 inout metadata meta,
                 inout standard_metadata_t standard_metadata) {
 
@@ -80,7 +76,7 @@ parser MyParser(packet_in packet,
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
             TYPE_IPV4: mark_no_telemetry;
-            TYPE_TELEMETRY: parse_telemetry;
+            TYPE_TELEMETRY: parse_telemetry_header;
             default: accept;
         }
     }
@@ -92,14 +88,27 @@ parser MyParser(packet_in packet,
 
     state mark_no_telemetry {
         hdr.telemetry_header.setInvalid();
-        hdr.telemetry_payload.setInvalid();
         transition parse_ipv4;
     }
 
-    state parse_telemetry {
+    state parse_telemetry_header {
         packet.extract(hdr.telemetry_header);
-        packet.extract(hdr.telemetry_payload, (bit<32>)(hdr.telemetry_header.item_count * SIZEOF_TELEMETRY_ITEM));
-        transition parse_ipv4;
+        meta.parsed_telemetry_item_count = 0;
+
+        transition select(hdr.telemetry_header.item_count) {
+            0: parse_ipv4;
+            default: parse_telemetry_item;
+        }
+    }
+
+    state parse_telemetry_item {
+        packet.extract(hdr.telemetry_items.next);
+        meta.parsed_telemetry_item_count = meta.parsed_telemetry_item_count + 1;
+
+        transition select(meta.parsed_telemetry_item_count == hdr.telemetry_header.item_count) {
+            true: parse_ipv4;
+            false: parse_telemetry_item;
+        }
     }
 }
 
@@ -130,13 +139,22 @@ control MyIngress(inout headers hdr,
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
 
         // Telemetry logic
-        if (hdr.telemetry_header.isValid() && hdr.telemetry_payload.isValid()) {
+        if (hdr.telemetry_header.isValid() && hdr.telemetry_header.item_count > 0) {
             // TODO: Update metrics
         } else {
             // TODO: Set telemetry headers. Read them from https://github.com/p4lang/behavioral-model/blob/main/docs/simple_switch.md#intrinsic_metadata-header
-            hdr.ethernet.etherType = TYPE_TELEMETRY;
             hdr.telemetry_header.setValid();
-            hdr.telemetry_payload.setValid();
+            hdr.telemetry_items[0].setValid();
+
+            hdr.ethernet.etherType = TYPE_TELEMETRY;
+            hdr.telemetry_header.item_count = 1;
+
+            hdr.telemetry_items[0] = {
+                standard_metadata.ingress_global_timestamp,
+                standard_metadata.ingress_port,
+                standard_metadata.egress_port,
+                0
+            };
         }
     }
 
@@ -202,7 +220,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.telemetry_header);
-        packet.emit(hdr.telemetry_payload);
+        packet.emit(hdr.telemetry_items);
         packet.emit(hdr.ipv4);
     }
 }

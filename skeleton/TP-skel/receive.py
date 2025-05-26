@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+
 import os
 import sys
 
-TELEMETRY_ETHER_TYPE = 0x801
-TELEMETRY_HEADER_SIZE_BYTES = 1
-
+# ----------------- REGION: SETUP -----------------
+# |            You can ignore this code           |
+# -------------------------------------------------
 from scapy.all import (
     FieldLenField,
     FieldListField,
@@ -17,8 +18,6 @@ from scapy.layers.inet import _IPOption_HDR, IP, IPOption
 from scapy.layers.l2 import Ether
 from scapy.packet import Packet, Raw
 from binascii import hexlify
-
-
 def get_if():
     ifs=get_if_list()
     iface=None
@@ -30,7 +29,6 @@ def get_if():
         print("Cannot find eth0 interface")
         exit(1)
     return iface
-
 class IPOption_MRI(IPOption):
     name = "MRI"
     option = 31
@@ -43,16 +41,49 @@ class IPOption_MRI(IPOption):
                                    [],
                                    IntField("", 0),
                                    length_from=lambda pkt:pkt.count*4) ]
+# -------------- END OF REGION: SETUP -------------
+# |        You can ignore the code above code     |
+# -------------------------------------------------
+
+TELEMETRY_ETHER_TYPE = 0x801
+SIZEOF_TELEMETRY_ITEM = (48 + 9 + 9 + 6) // 8 # Sizeof in bytes
+
+
 def handle_pkt(pkt: Packet):
     if Ether in pkt and pkt[Ether].type == TELEMETRY_ETHER_TYPE:
-        telemetry_header = pkt[Raw].load[0:TELEMETRY_HEADER_SIZE_BYTES]
-        rest_of_packet = pkt[Raw].load[TELEMETRY_HEADER_SIZE_BYTES:]
+        telemetry_item_count = pkt[Raw].load[0]
+        telemetry_items = pkt[Raw].load[1:1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM]
+        # TODO: Parse!
+
+        rest_of_packet = pkt[Raw].load[1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM:]
         ip_packet = IP(rest_of_packet)
 
-        print(f'Telemetry raw data: {repr(hexlify(telemetry_header, '-'))}')
+        print(f'Telemetry raw data: {repr(hexlify(telemetry_items, '-'))}')
         ip_packet.show2()
         print()
 
+# Big-endian bit reader
+class BitReader:
+    def __init__(self, buffer: bytes):
+        self.position = 0
+        self.buffer = buffer
+
+    def read(self, n: int) -> int:
+        total = 0
+
+        for i in range(n):
+            total = total << 1
+
+            current_byte = self.position // 8
+            offset_within_byte = self.position % 8
+
+            byte = self.buffer[current_byte]
+            bit = byte & (1 << (7-offset_within_byte))
+
+            if bit != 0:
+                total += 1
+
+            self.position += 1
 
 
 def main():
