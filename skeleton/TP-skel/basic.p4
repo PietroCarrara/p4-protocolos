@@ -140,7 +140,15 @@ control MyIngress(inout headers hdr,
 
         // Telemetry logic
         if (hdr.telemetry_header.isValid() && hdr.telemetry_header.item_count > 0) {
-            // TODO: Update metrics
+            hdr.telemetry_header.item_count = hdr.telemetry_header.item_count + 1;
+            hdr.telemetry_items[hdr.telemetry_header.item_count].setValid();
+
+            hdr.telemetry_items[hdr.telemetry_header.item_count] = {
+                standard_metadata.ingress_global_timestamp,
+                standard_metadata.ingress_port,
+                standard_metadata.egress_port,
+                0
+            };
         } else {
             // TODO: Set telemetry headers. Read them from https://github.com/p4lang/behavioral-model/blob/main/docs/simple_switch.md#intrinsic_metadata-header
             hdr.telemetry_header.setValid();

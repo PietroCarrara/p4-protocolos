@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-
 # ----------------- REGION: SETUP -----------------
 # |            You can ignore this code           |
 # -------------------------------------------------
+import os
+import sys
 from scapy.all import (
     FieldLenField,
     FieldListField,
@@ -48,19 +47,27 @@ class IPOption_MRI(IPOption):
 TELEMETRY_ETHER_TYPE = 0x801
 SIZEOF_TELEMETRY_ITEM = (48 + 9 + 9 + 6) // 8 # Sizeof in bytes
 
-
 def handle_pkt(pkt: Packet):
     if Ether in pkt and pkt[Ether].type == TELEMETRY_ETHER_TYPE:
         telemetry_item_count = pkt[Raw].load[0]
-        telemetry_items = pkt[Raw].load[1:1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM]
-        # TODO: Parse!
+        telemetry_items_buffer = BitReader(pkt[Raw].load[1:1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM])
+        telemetry_items = []
+
+        for i in range(telemetry_item_count):
+            telemetry_items.append({
+                "ingress_global_timestamp": telemetry_items_buffer.read(48),
+                "ingress_port": telemetry_items_buffer.read(9),
+                "egress_port": telemetry_items_buffer.read(9),
+                "padding": telemetry_items_buffer.read(6),
+            })
 
         rest_of_packet = pkt[Raw].load[1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM:]
         ip_packet = IP(rest_of_packet)
 
-        print(f'Telemetry raw data: {repr(hexlify(telemetry_items, '-'))}')
+        print(telemetry_items)
         ip_packet.show2()
         print()
+
 
 # Big-endian bit reader
 class BitReader:
@@ -84,6 +91,8 @@ class BitReader:
                 total += 1
 
             self.position += 1
+
+        return total
 
 
 def main():
