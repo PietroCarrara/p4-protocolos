@@ -40,8 +40,7 @@ header telemetry_item {
     bit<48> ingress_global_timestamp; // As defined in v1model.p4
     bit<9> ingress_port;              // As defined in v1model.p4
     bit<9> egress_port;               // As defined in v1model.p4
-    // TODO: switch_id
-    bit<6> padding;
+    bit<6> switch_id;                 // Our own implementation. Value comes from in-memory tables, defined in sX-runtime.json
 }
 
 header telemetry_header_t {
@@ -132,7 +131,7 @@ control MyIngress(inout headers hdr,
         mark_to_drop(standard_metadata);
     }
 
-    action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
+    action ipv4_forward(macAddr_t dstAddr, egressSpec_t port, bit<6> switch_id) {
         standard_metadata.egress_spec = port;
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = dstAddr;
@@ -147,7 +146,7 @@ control MyIngress(inout headers hdr,
                 standard_metadata.ingress_global_timestamp,
                 standard_metadata.ingress_port,
                 standard_metadata.egress_port,
-                0
+                switch_id
             };
         } else {
             // TODO: Set telemetry headers. Read them from https://github.com/p4lang/behavioral-model/blob/main/docs/simple_switch.md#intrinsic_metadata-header
@@ -161,7 +160,7 @@ control MyIngress(inout headers hdr,
                 standard_metadata.ingress_global_timestamp,
                 standard_metadata.ingress_port,
                 standard_metadata.egress_port,
-                0
+                switch_id
             };
         }
     }

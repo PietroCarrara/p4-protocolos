@@ -58,16 +58,22 @@ def handle_pkt(pkt: Packet):
                 "ingress_global_timestamp": telemetry_items_buffer.read(48),
                 "ingress_port": telemetry_items_buffer.read(9),
                 "egress_port": telemetry_items_buffer.read(9),
-                "padding": telemetry_items_buffer.read(6),
+                "switch_id": telemetry_items_buffer.read(6),
             })
 
         rest_of_packet = pkt[Raw].load[1+telemetry_item_count*SIZEOF_TELEMETRY_ITEM:]
         ip_packet = IP(rest_of_packet)
 
-        print(telemetry_items)
+        display_metrics(telemetry_items)
         ip_packet.show2()
         print()
 
+def display_metrics(metrics):
+    for switch in metrics:
+        print(f"# Switch {switch["switch_id"]}")
+        print(f"  - Ingress Timestamp: {switch["ingress_global_timestamp"]} (microseconds)")
+        print(f"  - Ingress Port:      {switch["ingress_port"]}")
+        print(f"  - Egress Port:       {switch["egress_port"]}")
 
 # Big-endian bit reader
 class BitReader:
