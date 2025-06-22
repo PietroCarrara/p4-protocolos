@@ -23,6 +23,14 @@
                 "route add default gw 10.0.3.30 dev eth0",
                 "arp -i eth0 -s 10.0.3.30 08:00:00:00:03:00"
             ]
+        },
+        "h5": {
+            "ip": "10.0.5.5/24",
+            "mac": "08:00:00:00:05:55",
+            "commands": [
+                "route add default gw 10.0.5.50 dev eth0",
+                "arp -i eth0 -s 10.0.5.50 08:00:00:00:05:00"
+            ]
         }
     },
     "switches": {
@@ -34,6 +42,12 @@
         },
         "s3": {
             "runtime_json": "triangle-topo/s3-runtime.json"
+        },
+        "s4": {
+            "runtime_json": "triangle-topo/s4-runtime.json"
+        },
+        "s5": {
+            "runtime_json": "triangle-topo/s5-runtime.json"
         }
     },
     "links": [
@@ -60,6 +74,18 @@
         [
             "h3",
             "s3-p1"
+        ],
+        [
+            "s4-p1",
+            "s5-p2"
+        ],
+        [
+            "s3-p4",
+            "s4-p2"
+        ],
+        [
+            "s5-p1",
+            "h5"
         ]
     ]
 }
